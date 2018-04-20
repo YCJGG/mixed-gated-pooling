@@ -57,7 +57,7 @@ class VGG(nn.Module):
 
     def forward(self, x):
         x = self.features(x)
-        print(x.size())
+        #print(x.size())
         x = self.classifier(x)
         return x 
 
