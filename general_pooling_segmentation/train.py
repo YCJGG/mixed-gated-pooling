@@ -1,7 +1,7 @@
 import datetime
 import os
 import random
-
+import matplotlib.pyplot as plt
 import torchvision.transforms as standard_transforms
 import torchvision.utils as vutils
 from torch import optim
@@ -24,7 +24,7 @@ ckpt_path = '../../ckpt'
 exp_name = 'voc-max'
 args = {
     'epoch_num': 40,
-    'lr': 2e-7,
+    'lr': 1e-7,
     'weight_decay': 0.0005,
     'momentum': 0.9,
     'lr_patience': 100,  # large patience denotes fixed lr
@@ -135,9 +135,14 @@ def train(train_loader, net, criterion, optimizer, epoch, train_args):
         #print(data)
         start = time.time()
         inputs, labels = data
-        #print(inputs.size())
-        #print(labels.size())
-        #assert inputs.size()[2:] == labels.size()[1:]
+
+        # test the input data
+        save_image = inputs[0]
+        save_label = labels[0]
+        # plt.imsave('./i.png', (save_image.numpy().transpose(1, 2, 0) + 1) / 2)
+        # plt.imsave('./l.png', (save_label.numpy() + 1) / 2)
+
+
         N = inputs.size(0)
         inputs = Variable(inputs).cuda()
         labels = Variable(labels).cuda()
@@ -206,8 +211,8 @@ def validate(val_loader, net, criterion, optimizer, epoch, train_args, restore, 
         snapshot_name = 'epoch_%d_loss_%.5f_acc_%.5f_acc-cls_%.5f_mean-iu_%.5f_fwavacc_%.5f_lr_%.10f' % (
             epoch, val_loss.avg, acc, acc_cls, mean_iu, fwavacc, optimizer.param_groups[1]['lr']
         )
-        torch.save(net.state_dict(), os.path.join(ckpt_path, exp_name, snapshot_name + '.pth'))
-        torch.save(optimizer.state_dict(), os.path.join(ckpt_path, exp_name, 'opt_' + snapshot_name + '.pth'))
+        #torch.save(net.state_dict(), os.path.join(ckpt_path, exp_name, snapshot_name + '.pth'))
+        #torch.save(optimizer.state_dict(), os.path.join(ckpt_path, exp_name, 'opt_' + snapshot_name + '.pth'))
 
         if train_args['val_save_to_img_file']:
             to_save_dir = os.path.join(ckpt_path, exp_name, str(epoch))
