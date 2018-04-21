@@ -79,8 +79,7 @@ class VOC(data.Dataset):
     
         mask = Image.open(mask_path)
 
-        if self.joint_transform is not None:
-            img, mask = self.joint_transform(img, mask)
+        
 
         if self.sliding_crop is not None:
             img_slices, mask_slices, slices_info = self.sliding_crop(img, mask)
@@ -95,6 +94,8 @@ class VOC(data.Dataset):
                 img = self.transform(img)
             if self.target_transform is not None:
                 mask = self.target_transform(mask)
+            if self.joint_transform is not None:
+                img, mask = self.joint_transform(img, mask)
             return img, mask
 
     def __len__(self):

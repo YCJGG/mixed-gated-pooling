@@ -1,9 +1,10 @@
 import math
 import numbers
 import random
-
+import torch.nn.functional as F
 from PIL import Image, ImageOps
 import numpy as np
+import torch
 
 
 class Compose(object):
@@ -11,14 +12,16 @@ class Compose(object):
         self.transforms = transforms
 
     def __call__(self, img, mask):
-        assert img.size == mask.size
+        # print(img.size())
+        # print(mask.size())
+        assert img.size()[1:] == mask.size()
         for t in self.transforms:
             img, mask = t(img, mask)
         return img, mask
 
 
 class RandomCrop(object):
-    def __init__(self, size, padding=0):
+    def __init__(self, size, padding=1):
         if isinstance(size, numbers.Number):
             self.size = (int(size), int(size))
         else:
@@ -26,22 +29,47 @@ class RandomCrop(object):
         self.padding = padding
 
     def __call__(self, img, mask):
+        # pad to the right and bottom
+        #assert img.size == mask.size
+        h,w = img.size()[1:]
+        #print(w,h)
         if self.padding > 0:
-            img = ImageOps.expand(img, border=self.padding, fill=0)
-            mask = ImageOps.expand(mask, border=self.padding, fill=0)
+            img = torch.unsqueeze(img,0)
+            mask = torch.unsqueeze(mask,0)
+            mask = torch.unsqueeze(mask,0)
+            img = F.pad(img, (0,max(512-w,0),0,max(512-h,0)),mode='constant',value=0)
+            mask = F.pad(mask, (0,max(512-w,0),0,max(512-h,0)),mode='constant',value=255)
+            img = torch.squeeze(img)
+            mask = torch.squeeze(mask)
+            mask = mask.data
+            img = img.data
+            # img = np.array(img)
+            # mask = np.array(mask)
+            # print(img.shape)
+            # img[:,:,0] = np.lib.pad(img[:,:,0], ((0,max(512-h,0)),(0,max(512-w,0))),'constant',constant_values=104.008)
+            # img[:,:,1] = np.lib.pad(img[:,:,1], ((0,max(512-h,0)),(0,max(512-w,0))),'constant',constant_values=116.669)
+            # img[:,:,2] = np.lib.pad(img[:,:,2], ((0,max(512-h,0)),(0,max(512-w,0))),'constant',constant_values=122.675)
+            # img = F.pad(img, (0,0,max(512-w,0),max(512-h,0)),mode='constant',value=122.675)
+            # mask = F.pad(mask, (0,0,max(512-w,0),max(512-h,0)),mode='constant',value=255)
+            # img = ImageOps.expand(img, border=self.padding, fill=0)
+            # mask = ImageOps.expand(mask, border=self.padding, fill=0)
+            #print(img.size())
+            #print(mask.size())
 
-        assert img.size == mask.size
-        w, h = img.size
+
+        #assert img.size == mask.size
+        h, w = img.size()[1:]
         th, tw = self.size
         if w == tw and h == th:
             return img, mask
-        if w < tw or h < th:
-            return img.resize((tw, th), Image.BILINEAR), mask.resize((tw, th), Image.NEAREST)
+        # if w < tw or h < th:
+        #     return img.resize((tw, th), Image.BILINEAR), mask.resize((tw, th), Image.NEAREST)
 
         x1 = random.randint(0, w - tw)
         y1 = random.randint(0, h - th)
-        return img.crop((x1, y1, x1 + tw, y1 + th)), mask.crop((x1, y1, x1 + tw, y1 + th))
-
+        
+        #return img.crop((x1, y1, x1 + tw, y1 + th)), mask.crop((x1, y1, x1 + tw, y1 + th))
+        return img[:,y1:y1+th,x1:x1+tw], mask[y1:y1+th,x1:x1+tw]
 
 class CenterCrop(object):
     def __init__(self, size):

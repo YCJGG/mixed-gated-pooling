@@ -7,14 +7,16 @@ import torchvision.utils as vutils
 from torch import optim
 from torch.autograd import Variable
 from torch.backends import cudnn
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+#from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
-
+import torch.nn.functional as F
 import utils.transforms as extended_transforms
 import VOC
 from vgg16_rf import *
 from utils import check_mkdir, evaluate, AverageMeter, CrossEntropyLoss2d
-
+from utils import joint_transforms
+import time
 
 cudnn.benchmark = True
 
@@ -22,14 +24,14 @@ ckpt_path = '../../ckpt'
 exp_name = 'voc-max'
 args = {
     'epoch_num': 40,
-    'lr': 1e-6,
+    'lr': 2e-7,
     'weight_decay': 0.0005,
     'momentum': 0.9,
     'lr_patience': 100,  # large patience denotes fixed lr
     'snapshot': '',  # empty string denotes learning from scratch
     'print_freq': 10,
     'val_save_to_img_file': False,
-    'val_img_sample_rate': 0.1  # randomly sample some validation results to display
+    'val_img_sample_rate': 0.01  # randomly sample some validation results to display
 }
 
 
@@ -37,7 +39,18 @@ args = {
 
 
 def main(train_args):
-    net = VGG(num_classes=VOC.num_classes).cuda()
+    net = VGG(num_classes=VOC.num_classes)
+    net_dict = net.state_dict()
+    pretrain = torch.load('./vgg16_20M.pkl')
+    
+    pretrain_dict = pretrain.state_dict()
+    pretrain_dict = {'features.'+k: v for k, v in pretrain_dict.items() if 'features.'+k in net_dict}
+    
+    net_dict.update(pretrain_dict)
+    net.load_state_dict(net_dict)
+
+    net = nn.DataParallel(net)
+    net = net.cuda()
 
     if len(train_args['snapshot']) == 0:
         curr_epoch = 1
@@ -55,13 +68,22 @@ def main(train_args):
 
     mean_std = ([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 
+    joint_transform_train = joint_transforms.Compose([
+        joint_transforms.RandomCrop((321,321))
+    ])
+
+    joint_transform_test = joint_transforms.Compose([
+        joint_transforms.RandomCrop((512,512))
+    ])
+
     input_transform = standard_transforms.Compose([
-        standard_transforms.Resize((256,256)),
+        #standard_transforms.Resize((321,321)),
+        #standard_transforms.RandomCrop(224),
         standard_transforms.ToTensor(),
         standard_transforms.Normalize(*mean_std)
     ])
     target_transform = standard_transforms.Compose([
-        standard_transforms.Scale((256,256)),
+        #standard_transforms.Resize((224,224)),
         extended_transforms.MaskToTensor()
     ])
     #target_transform = extended_transforms.MaskToTensor()
@@ -69,11 +91,15 @@ def main(train_args):
         extended_transforms.DeNormalize(*mean_std),
         standard_transforms.ToPILImage(),
     ])
+    visualize = standard_transforms.Compose([
+        standard_transforms.Resize(400),
+        standard_transforms.CenterCrop(400),
+        standard_transforms.ToTensor()
+    ])
 
-
-    train_set = VOC.VOC('train', transform=input_transform, target_transform=target_transform)
-    train_loader = DataLoader(train_set, batch_size=1, num_workers=4, shuffle=True)
-    val_set = VOC.VOC('val', transform=input_transform, target_transform=target_transform)
+    train_set = VOC.VOC('train', joint_transform=joint_transform_train,transform=input_transform, target_transform=target_transform)
+    train_loader = DataLoader(train_set, batch_size=20, num_workers=4, shuffle=True)
+    val_set = VOC.VOC('val', joint_transform=joint_transform_test,transform=input_transform, target_transform=target_transform)
     val_loader = DataLoader(val_set, batch_size=1, num_workers=4, shuffle=False)
 
     criterion = CrossEntropyLoss2d(size_average=False, ignore_index=VOC.ignore_label).cuda()
@@ -94,30 +120,34 @@ def main(train_args):
     check_mkdir(os.path.join(ckpt_path, exp_name))
     open(os.path.join(ckpt_path, exp_name, str(datetime.datetime.now()) + '.txt'), 'w').write(str(train_args) + '\n\n')
 
-    scheduler = ReduceLROnPlateau(optimizer, 'min', patience=train_args['lr_patience'], min_lr=1e-10, verbose=True)
+    #scheduler = ReduceLROnPlateau(optimizer, 'min', patience=train_args['lr_patience'], min_lr=1e-10, verbose=True)
+    scheduler = StepLR(optimizer, step_size=10, gamma= 0.1)
     for epoch in range(curr_epoch, train_args['epoch_num'] + 1):
         train(train_loader, net, criterion, optimizer, epoch, train_args)
         val_loss = validate(val_loader, net, criterion, optimizer, epoch, train_args, restore_transform, visualize)
-        scheduler.step(val_loss)
-
+        #scheduler.step(val_loss)
+        scheduler.step()
     
 def train(train_loader, net, criterion, optimizer, epoch, train_args):
     train_loss = AverageMeter()
     curr_iter = (epoch - 1) * len(train_loader)
     for i, data in enumerate(train_loader):
         #print(data)
+        start = time.time()
         inputs, labels = data
         #print(inputs.size())
         #print(labels.size())
-        assert inputs.size()[2:] == labels.size()[1:]
+        #assert inputs.size()[2:] == labels.size()[1:]
         N = inputs.size(0)
         inputs = Variable(inputs).cuda()
         labels = Variable(labels).cuda()
-
+        
         optimizer.zero_grad()
         outputs = net(inputs)
-        print('1',outputs.size())
-        print(labels.size())
+
+        # upsample 
+        outputs = F.upsample_bilinear(outputs, size=(321,321))
+
         assert outputs.size()[2:] == labels.size()[1:]
         assert outputs.size()[1] == VOC.num_classes
 
@@ -128,11 +158,12 @@ def train(train_loader, net, criterion, optimizer, epoch, train_args):
         train_loss.update(loss.data[0], N)
 
         curr_iter += 1
-        writer.add_scalar('train_loss', train_loss.avg, curr_iter)
 
         if (i + 1) % train_args['print_freq'] == 0:
-            print('[epoch %d], [iter %d / %d], [train loss %.5f]' % (
-                epoch, i + 1, len(train_loader), train_loss.avg
+            end = time.time()
+            i_time = end -start
+            print('[epoch %d], [iter %d / %d], [train loss %.5f], [time %.5f per 10]' % (
+                epoch, i + 1, len(train_loader), train_loss.avg, i_time*10
             ))
 def validate(val_loader, net, criterion, optimizer, epoch, train_args, restore, visualize):
     net.eval()
@@ -147,6 +178,11 @@ def validate(val_loader, net, criterion, optimizer, epoch, train_args, restore, 
         gts = Variable(gts, volatile=True).cuda()
 
         outputs = net(inputs)
+
+        # upsample the outpust
+
+        outputs = F.upsample_bilinear(outputs,size=(512,512))
+
         predictions = outputs.data.max(1)[1].squeeze_(1).squeeze_(0).cpu().numpy()
 
         val_loss.update(criterion(outputs, gts).data[0] / N, N)
@@ -192,7 +228,7 @@ def validate(val_loader, net, criterion, optimizer, epoch, train_args, restore, 
                                visualize(predictions_pil.convert('RGB'))])
         val_visual = torch.stack(val_visual, 0)
         val_visual = vutils.make_grid(val_visual, nrow=3, padding=5)
-        writer.add_image(snapshot_name, val_visual)
+        #writer.add_image(snapshot_name, val_visual)
 
     print('--------------------------------------------------------------------')
     print('[epoch %d], [val loss %.5f], [acc %.5f], [acc_cls %.5f], [mean_iu %.5f], [fwavacc %.5f]' % (
