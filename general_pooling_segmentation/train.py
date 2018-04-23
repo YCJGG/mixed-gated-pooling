@@ -66,7 +66,7 @@ def main(train_args):
 
     net.train()
 
-    mean_std = ([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    mean_std = ([0.481, 0.457, 0.408], [1, 1, 1])
 
     joint_transform_train = joint_transforms.Compose([
         joint_transforms.RandomCrop((321,321))
@@ -80,7 +80,7 @@ def main(train_args):
         #standard_transforms.Resize((321,321)),
         #standard_transforms.RandomCrop(224),
         standard_transforms.ToTensor(),
-        #standard_transforms.Normalize(*mean_std)
+        standard_transforms.Normalize(*mean_std)
     ])
     target_transform = standard_transforms.Compose([
         #standard_transforms.Resize((224,224)),
@@ -137,16 +137,17 @@ def train(train_loader, net, criterion, optimizer, epoch, train_args):
         inputs, labels = data
 
         # test the input data
-        save_image = inputs[0]
-        save_label = labels[0]
+        # save_image = inputs[0]
+        # save_label = labels[0]
         # plt.imsave('./i.png', (save_image.numpy().transpose(1, 2, 0) + 1) / 2)
         # plt.imsave('./l.png', (save_label.numpy() + 1) / 2)
 
 
         N = inputs.size(0)
+        # to fit the origin operation
         inputs = Variable(inputs).cuda()
         labels = Variable(labels).cuda()
-        
+        #print(inputs)
         optimizer.zero_grad()
         outputs = net(inputs)
 

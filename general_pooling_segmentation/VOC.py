@@ -91,7 +91,7 @@ class VOC(data.Dataset):
             return img, mask, torch.LongTensor(slices_info)
         else:
             if self.transform is not None:
-                img = self.transform(img)
+                img = self.transform(img)*255
             if self.target_transform is not None:
                 mask = self.target_transform(mask)
             if self.joint_transform is not None:

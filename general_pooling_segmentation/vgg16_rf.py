@@ -45,7 +45,7 @@ class VGG(nn.Module):
 	('fc7',nn.Conv2d(1024,1024,1)),\
 	('relu7',nn.ReLU(inplace=True)),\
 	('drop7',nn.Dropout2d(p=0.5)),\
-	('fc8_pascal',nn.Conv2d(1024,num_classes,1)),\
+	('fc8_voc',nn.Conv2d(1024,num_classes,1)),\
     #('upsample',  nn.UpsamplingBilinear2d(size=(224,224))),\
  ]))
 		
