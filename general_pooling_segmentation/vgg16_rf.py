@@ -41,10 +41,10 @@ class VGG(nn.Module):
 	('pool5',nn.MaxPool2d(3, stride=1, padding=1)),\
 	('fc6',nn.Conv2d(512,1024,3, padding=1, dilation=1)),\
 	('relu6',nn.ReLU(inplace=True)),\
-	#('drop6',nn.Dropout2d(p=0.5, inplace=True)),\
+	('drop6',nn.Dropout2d(p=0.5)),\
 	('fc7',nn.Conv2d(1024,1024,1)),\
 	('relu7',nn.ReLU(inplace=True)),\
-	#('drop7',nn.Dropout2d(p=0.5, inplace=True)),\
+	('drop7',nn.Dropout2d(p=0.5)),\
 	('fc8_pascal',nn.Conv2d(1024,num_classes,1)),\
     #('upsample',  nn.UpsamplingBilinear2d(size=(224,224))),\
  ]))

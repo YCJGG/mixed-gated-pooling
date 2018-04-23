@@ -80,7 +80,7 @@ def main(train_args):
         #standard_transforms.Resize((321,321)),
         #standard_transforms.RandomCrop(224),
         standard_transforms.ToTensor(),
-        standard_transforms.Normalize(*mean_std)
+        #standard_transforms.Normalize(*mean_std)
     ])
     target_transform = standard_transforms.Compose([
         #standard_transforms.Resize((224,224)),
@@ -106,7 +106,7 @@ def main(train_args):
 
     #optimizer = optim.SGD(net.parameters(), lr = train_args['lr'], momentum=0.9,weight_decay=train_args['weight_decay'])
     optimizer = optim.SGD([{'params': [param for name, param in net.named_parameters() if name[-4:] == 'bias'],
-         'lr': 2 * train_args['lr']},
+         'lr': 2 * train_args['lr'], 'momentum':train_args['momentum']},
         {'params': [param for name, param in net.named_parameters() if name[-4:] != 'bias'],
          'lr': train_args['lr'], 'momentum':train_args['momentum'], 'weight_decay': train_args['weight_decay']}])
 
@@ -121,7 +121,7 @@ def main(train_args):
     open(os.path.join(ckpt_path, exp_name, str(datetime.datetime.now()) + '.txt'), 'w').write(str(train_args) + '\n\n')
 
     #scheduler = ReduceLROnPlateau(optimizer, 'min', patience=train_args['lr_patience'], min_lr=1e-10, verbose=True)
-    scheduler = StepLR(optimizer, step_size=10, gamma= 0.1)
+    scheduler = StepLR(optimizer, step_size=13, gamma= 0.1)
     for epoch in range(curr_epoch, train_args['epoch_num'] + 1):
         train(train_loader, net, criterion, optimizer, epoch, train_args)
         val_loss = validate(val_loader, net, criterion, optimizer, epoch, train_args, restore_transform, visualize)
