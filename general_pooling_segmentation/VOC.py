@@ -76,7 +76,11 @@ class VOC(data.Dataset):
 
         img_path, mask_path = self.imgs[index]
         img = Image.open(img_path).convert('RGB')
-    
+        img = np.array(img)
+        tmp = img[:,:,0]
+        img[:,:,0] = img[:,:,2]
+        img[:,:,2] = tmp
+        img=Image.fromarray(np.uint8(img)) 
         mask = Image.open(mask_path)
 
         
