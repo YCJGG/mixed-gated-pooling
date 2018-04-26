@@ -50,12 +50,15 @@ test_loader = torch.utils.data.DataLoader(
 
 
 class gatedPool_l(nn.Module):
-    def __init__(self, stride):
+    def __init__(self, kernel_size, stride, padding = 0, dilation=1):
         super(gatedPool_l, self).__init__()
-        self.mask = nn.Parameter(torch.randn(1,1,stride,stride)) # nn.Parameter is special Variable
-        
+        self.mask = nn.Parameter(torch.randn(1,1,kernel_size,kernel_size)) # nn.Parameter is special Variable
+        self.kernel_size = kernel_size
         self.stride = stride
-         
+        self.padding = padding
+        self.dilation = dilation
+        self.return_indices = False
+        self.ceil_mode = False
     def forward(self, x):
         size = list(x.size())[1]
         out_size = list(x.size())[2] // 2
@@ -64,66 +67,78 @@ class gatedPool_l(nn.Module):
         for c in range(size):
             a = x[:,c,:,:]
             a = torch.unsqueeze(a,1)
-            a = F.conv2d(a,self.mask,stride = 2)
+            a = F.conv2d(a,self.mask,stride = self.stride)
             xc.append(a)
         output = xc[0]
         #print(output)
         for xx in xc[1:]:
             output = torch.cat((output,xx),1)
         #output = torch.reshape(xc,(bs,size,out_size,out_size))
-        alpha = F.sigmoid(output)
         
-        x = alpha*F.max_pool2d(x,self.stride) + (1-alpha)*F.avg_pool2d(x,self.stride)
+        alpha = F.sigmoid(output)
+    
+        x = alpha*F.max_pool2d(x,self.kernel_size,self.stride,self.padding, self.dilation) + (1-alpha)*F.avg_pool2d(x,self.kernel_size,self.stride,self.padding)
         
         return x 
 
 class gatedPool_c(nn.Module):
-    def __init__(self, stride,size):
+    def __init__(self,in_channel, kernel_size, stride, padding = 0, dilation=1):
         super(gatedPool_c, self).__init__()
-        
-        self.mask = nn.Parameter(torch.randn(size,size,stride,stride)) # nn.Parameter is special Variable
+        out_channel = in_channel
+        self.mask = nn.Parameter(torch.randn(in_channel,out_channel,kernel_size,kernel_size)) # nn.Parameter is special Variable
+        self.kernel_size = kernel_size
         self.stride = stride
+        self.padding = padding
+        self.dilation = dilation
          
     def forward(self, x):
         size = list(x.size())[1]
         out_size = list(x.size())[2] // 2
         bs = list(x.size())[0]
-        mask_c = F.conv2d(x,self.mask,stride = 2)
+        mask_c = F.conv2d(x,self.mask,stride = self.stride)
         alpha = F.sigmoid(mask_c)
-        print(alpha)
-        x = alpha*F.max_pool2d(x,self.stride) + (1-alpha)*F.avg_pool2d(x,self.stride)
+        #print(alpha)
+        x = alpha*F.max_pool2d(x,self.kernel_size,self.stride,self.padding, self.dilation) + (1-alpha)*F.avg_pool2d(x,self.kernel_size,self.stride, self.padding)
         return x 
 class mixedPool(nn.Module):
-    def __init__(self, alpha, stride):
+    def __init__(self, alpha, kernel_size, stride, padding = 0, dilation=1):
         # nn.Module.__init__(self)
         super(mixedPool, self).__init__()
         alpha = torch.FloatTensor([alpha])
         self.alpha = nn.Parameter(alpha) # nn.Parameter is special Variable
-        
+        self.kernel_size = kernel_size
         self.stride = stride
+        self.padding = padding
+        self.dilation = dilation
          
     def forward(self, x):
-        x = self.alpha*F.max_pool2d(x,self.stride) + (1-self.alpha)*F.avg_pool2d(x,self.stride)
+        x = self.alpha*F.max_pool2d(x,self.kernel_size,self.stride,self.padding, self.dilation) +(1-self.alpha)*F.avg_pool2d(x,self.kernel_size,self.stride, self.padding)
         #print(self.alpha)
+        #print(x.size())
         return x
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
         self.conv1 = nn.Conv2d(1, 10, kernel_size=5)
-        self.gatedPool1 = gatedPool_c(2,10)
+        # mixed pooling 
+        #self.mixedPool1 = mixedPool(alpha = 0.5,kernel_size=2,stride=2,padding = 0)
+        #getedpooling
+        self.mixedPool1 = gatedPool_c(in_channel=10,kernel_size=2,stride=2,padding = 0)
         self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
         self.conv2_drop = nn.Dropout2d()
-        self.gatedPool2 = gatedPool_c(2,20)
+        self.mixedPool2 = mixedPool(alpha = 0.5,kernel_size=2,stride=2,padding = 0)
         self.fc1 = nn.Linear(320, 50)
         self.fc2 = nn.Linear(50, 10)
 
     def forward(self, x):
         x = self.conv1(x)
-        x = self.gatedPool1(x)
+        #print(x.size())
+        x = self.mixedPool1(x)
+        #print(x.size())
         x = F.relu(x)
         x = self.conv2(x)
         x = self.conv2_drop(x)
-        x = self.gatedPool2(x)
+        x = self.mixedPool2(x)
         x = F.relu(x)
         x = x.view(-1, 320)
         x = F.relu(self.fc1(x))
