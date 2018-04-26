@@ -24,7 +24,7 @@ ckpt_path = './ckpt'
 exp_name = 'voc-max'
 args = {
     'epoch_num': 40,
-    'lr': 1e-7,
+    'lr': 1e-06,
     'weight_decay': 0.0005,
     'momentum': 0.9,
     'lr_patience': 100,  # large patience denotes fixed lr
@@ -114,9 +114,13 @@ def main(train_args):
 
     #optimizer = optim.SGD(net.parameters(), lr = train_args['lr'], momentum=0.9,weight_decay=train_args['weight_decay'])
     optimizer = optim.SGD([{'params': [param for name, param in net.named_parameters() if name[-4:] == 'bias'],
-         'lr': 2 * train_args['lr'], 'momentum':train_args['momentum']},
+         'lr': 2 * train_args['lr'], 'momentum':train_args['momentum'],'weight_decay': 0},
         {'params': [param for name, param in net.named_parameters() if name[-4:] != 'bias'],
-         'lr': train_args['lr'], 'momentum':train_args['momentum'], 'weight_decay': train_args['weight_decay']}])
+         'lr': train_args['lr'], 'momentum':train_args['momentum'], 'weight_decay': train_args['weight_decay']}],
+         {'params': [param for name, param in net.named_parameters() if name[-8:] == 'voc.bias'],
+         'lr': 20* train_args['lr'], 'momentum':train_args['momentum'], 'weight_decay': 0},
+          {'params': [param for name, param in net.named_parameters() if name[-10:] != 'voc.weight'],
+         'lr': 10*train_args['lr'], 'momentum':train_args['momentum'], 'weight_decay': train_args['weight_decay']})
 
 
     if len(train_args['snapshot']) > 0:
