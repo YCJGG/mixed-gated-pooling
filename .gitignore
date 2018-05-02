@@ -1,3 +1,4 @@
 *.pkl
 VOC2012*
 *.pth
+*byte*
